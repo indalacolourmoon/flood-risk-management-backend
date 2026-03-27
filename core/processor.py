@@ -51,8 +51,16 @@ class FloodProcessor:
             suffixes=("_y1", "_y2"),
         )
 
+        # Optimization: Free up memory from raw dataframes
+        del n1
+        del n2
+
         if merged.empty:
             raise ValueError("No matching records found between Year 1 and Year 2 datasets. Ensure the 'system:index' columns match.")
+
+        # Cleanup redundant columns to preserve RAM (Refinement #3)
+        # We only really need one set of lat/lng since they match
+        merged.drop(columns=["lat_y2", "lng_y2"], inplace=True)
 
         return merged
 

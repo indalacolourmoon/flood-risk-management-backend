@@ -137,11 +137,12 @@ async def get_status(project_name: str = Query(None)):
 
 @app.post("/api/upload", tags=["Data"])
 async def upload_data(
+    background_tasks: BackgroundTasks,
     project_name: str = Form("Krishna River Basin"),
     year1: UploadFile = File(None),
     year2: UploadFile = File(...)
 ):
-    """Uploads Yearly CSV files into a project-specific workspace."""
+    """Uploads Yearly CSV files into a project-specific workspace and triggers background training."""
     try:
         PROJECT_METADATA["name"] = project_name
         y1_path, y2_path = get_year_paths(project_name)
@@ -161,13 +162,27 @@ async def upload_data(
         processor = FloodProcessor(y1_path, y2_path)
         df = processor.load_and_merge()
         
+        # AUTO-TRAIN IN BACKGROUND (Refinement #1)
+        background_tasks.add_task(auto_train_after_upload, 19.0, project_name)
+
         return {
             "status": "success",
-            "message": f"Project '{project_name}' ready for analysis.",
+            "message": f"Project '{project_name}' ready. AI model training started in background.",
             "points_count": len(df)
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Data processing failed: {str(e)}")
+
+
+async def auto_train_after_upload(threshold: float, project_name: str):
+    """Internal helper to train model automatically after upload."""
+    try:
+        processor = _get_processor(project_name)
+        processed_df = processor.classify_and_compare(threshold)
+        ml_model.train(processed_df, threshold)
+        print(f"✅ Background Auto-Training Complete for {project_name}")
+    except Exception as e:
+        print(f"❌ Background Training Failed: {str(e)}")
 
 
 @app.get("/api/metadata", tags=["Data"])
